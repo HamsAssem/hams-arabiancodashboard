@@ -143,7 +143,7 @@ async function fetchCollections() {
 async function fetchOrders() {
   const { data, error } = await sb
     .from('orders')
-    .select('*, customers(name, email), order_items(quantity, unit_price, products(name))')
+    .select('*, customers(name, email, phone), order_items(quantity, unit_price, products(name))')
     .order('created_at', { ascending: false });
   if (error) { console.error(error); return; }
   orders = data;
@@ -495,6 +495,7 @@ function openOrderDetail(id) {
         <div class="order-info-grid">
           <div class="order-info-item"><label>Name</label><span>${esc(o.customers?.name || '—')}</span></div>
           <div class="order-info-item"><label>Email</label><span>${esc(o.customers?.email || '—')}</span></div>
+          <div class="order-info-item"><label>Phone</label><span>${esc(o.customers?.phone || '—')}</span></div>
           <div class="order-info-item"><label>Address</label><span>${esc(addr.address || '—')}</span></div>
           <div class="order-info-item"><label>City</label><span>${esc(addr.city || '—')}</span></div>
         </div>
