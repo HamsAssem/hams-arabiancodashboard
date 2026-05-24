@@ -12,6 +12,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 let products    = [];
 let collections = [];
 let bundles     = [];
+let heroSlides  = [];   // [{ slot:1|2|3, image_path, updated_at }]
 let orders      = [];
 let customers   = [];
 let selectedImg       = null;
@@ -101,6 +102,7 @@ async function loadAll() {
     fetchProducts(),
     fetchOrders(),
     fetchCustomers(),
+    fetchHeroSlides(),
   ]);
   await fetchBundles();
   updateStats();
@@ -167,6 +169,96 @@ async function fetchBundles() {
   renderBundleTable();
   const badge = document.getElementById('navBundleCount');
   if (badge) badge.textContent = bundles.length;
+}
+
+/* ── HERO BANNER ───────────────────────────────────────────── */
+// Defaults match the URLs hardcoded in skincare-shop/index.html. The
+// storefront falls back to these when a slot has no DB row.
+const HERO_DEFAULTS = {
+  1: 'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=1600&q=80',
+  2: 'https://images.unsplash.com/photo-1556228578-8c89e6adf883?w=1600&q=80',
+  3: 'https://images.unsplash.com/photo-1614806687007-2215b2c15bc8?w=1600&q=80',
+};
+
+async function fetchHeroSlides() {
+  const { data, error } = await sb.from('hero_slides').select('*').order('slot');
+  if (error) { console.error(error); heroSlides = []; renderHeroSlots(); return; }
+  heroSlides = data || [];
+  renderHeroSlots();
+}
+
+function renderHeroSlots() {
+  const grid = document.getElementById('heroSlotsGrid');
+  if (!grid) return;
+  const slots = [1, 2, 3];
+  grid.innerHTML = slots.map(slot => {
+    const row = heroSlides.find(s => s.slot === slot);
+    const customUrl = row ? imgUrl(row.image_path) : null;
+    const displayUrl = customUrl || HERO_DEFAULTS[slot];
+    const isCustom = !!row;
+    return `
+      <div class="hero-slot-card">
+        <div class="hero-slot-header">
+          <span class="hero-slot-label">Slide ${slot}</span>
+          ${isCustom
+            ? '<span class="pill pill-active">Custom</span>'
+            : '<span class="pill pill-inactive">Default</span>'}
+        </div>
+        <div class="hero-slot-preview" style="background-image:url('${displayUrl}')"></div>
+        <div class="hero-slot-actions">
+          <input type="file" id="heroFile${slot}" accept="image/*" style="display:none" onchange="handleHeroUpload(${slot}, event)" />
+          <button class="btn-primary" onclick="document.getElementById('heroFile${slot}').click()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            ${isCustom ? 'Replace' : 'Upload'}
+          </button>
+          ${isCustom
+            ? `<button class="btn-ghost" onclick="resetHeroSlot(${slot})">Reset to default</button>`
+            : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function handleHeroUpload(slot, e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) { toast('Image must be under 5 MB.'); return; }
+
+  toast('Uploading slide ' + slot + '…');
+  const ext  = file.name.split('.').pop().toLowerCase();
+  const path = `hero/${slot}-${Date.now()}.${ext}`;
+  const { error: upErr } = await sb.storage.from(BUCKET).upload(path, file, { cacheControl: '3600' });
+  if (upErr) { toast('Upload failed: ' + upErr.message); return; }
+
+  // Remove the old uploaded file (if any) before swapping the DB row.
+  const existing = heroSlides.find(s => s.slot === slot);
+  if (existing && existing.image_path && !existing.image_path.startsWith('http')) {
+    await sb.storage.from(BUCKET).remove([existing.image_path]);
+  }
+
+  // Upsert by slot. The UNIQUE constraint on hero_slides.slot makes this clean.
+  const { error: dbErr } = await sb
+    .from('hero_slides')
+    .upsert({ slot, image_path: path, updated_at: new Date().toISOString() }, { onConflict: 'slot' });
+  if (dbErr) { toast('Saved file, but DB update failed: ' + dbErr.message); return; }
+
+  toast('Slide ' + slot + ' updated ✓');
+  // Clear the file input so the user can re-upload the same filename later
+  const fi = document.getElementById('heroFile' + slot);
+  if (fi) fi.value = '';
+  await fetchHeroSlides();
+}
+
+async function resetHeroSlot(slot) {
+  const existing = heroSlides.find(s => s.slot === slot);
+  if (!existing) return;
+  if (existing.image_path && !existing.image_path.startsWith('http')) {
+    await sb.storage.from(BUCKET).remove([existing.image_path]);
+  }
+  const { error } = await sb.from('hero_slides').delete().eq('slot', slot);
+  if (error) { toast('Reset failed: ' + error.message); return; }
+  toast('Slide ' + slot + ' reset to default ✓');
+  await fetchHeroSlides();
 }
 
 /* ── STATS ─────────────────────────────────────────────────── */
@@ -1021,7 +1113,7 @@ function navigateTo(page) {
   document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.page === page));
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === `page-${page}`));
 
-  const titles = { dashboard: 'Dashboard', products: 'Products', collections: 'Collections', bundles: 'Bundles', orders: 'Orders', customers: 'Customers' };
+  const titles = { dashboard: 'Dashboard', hero: 'Hero Banner', products: 'Products', collections: 'Collections', bundles: 'Bundles', orders: 'Orders', customers: 'Customers' };
   document.getElementById('pageTitle').textContent = titles[page] || page;
 }
 
