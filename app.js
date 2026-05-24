@@ -125,6 +125,10 @@ async function fetchProducts() {
   setConnection(true);
   products = data.map(p => ({ ...p, collectionName: p.collections?.name || '' }));
   renderProductTable();
+  // Collections table shows a "X products" pill per row; it's computed
+  // from `products`, so re-render it now that products are loaded
+  // (otherwise it stays at 0 if collections finished loading first).
+  renderCollectionTable();
   populateCollectionDropdowns();
   document.getElementById('navProductCount').textContent = products.length;
 }
