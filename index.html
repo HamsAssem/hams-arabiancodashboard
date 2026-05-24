@@ -29,6 +29,10 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
         Hero Banner
       </button>
+      <button class="nav-item" data-page="offers">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+        Offers
+      </button>
       <button class="nav-item" data-page="products">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
         Products
@@ -133,6 +137,17 @@
         </div>
         <div class="hero-slots-grid" id="heroSlotsGrid"></div>
         <div class="table-empty" id="heroEmpty" style="display:none">No hero slides yet — the storefront is showing the 3 default slides. Click "Add Slide" to start customising.</div>
+      </section>
+
+      <!-- ══ OFFERS / HOME SECTIONS ══ -->
+      <section class="page" id="page-offers">
+        <div class="card" style="padding: 20px 24px 8px">
+          <h2 style="font-size:.95rem;font-weight:600;margin-bottom:6px">Home page offer sections</h2>
+          <p style="font-size:.85rem;color:var(--text-muted);margin:0">
+            Edit the copy and image shown on the home page's offer panels. Changes appear on the storefront on the next refresh.
+          </p>
+        </div>
+        <div class="hero-slots-grid" id="offersGrid"></div>
       </section>
 
       <!-- ══ PRODUCTS ══ -->
@@ -572,6 +587,76 @@
           <button type="submit" class="btn-primary" id="heroSubmitBtn">
             <span id="heroSubmitText">Save Slide</span>
             <span class="spinner" id="heroSpinner" style="display:none"></span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ░░ OFFER SECTION MODAL ░░ -->
+  <div class="modal-overlay" id="offerModalOverlay" style="display:none" onclick="closeOnBackdrop(event,'offerModalOverlay')">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="offerModalTitle">Edit Section</h2>
+        <button class="modal-close-btn" onclick="closeOfferModal()">✕</button>
+      </div>
+
+      <!-- Image upload (only shown for sections that have an image, like promo_banner) -->
+      <div class="img-upload" id="oImgUploadZone" onclick="document.getElementById('oImgFileInput').click()">
+        <input type="file" id="oImgFileInput" accept="image/*" style="display:none" onchange="handleOfferImgSelect(event)" />
+        <div id="oImgPlaceholder">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" width="32" height="32"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <span>Click to upload background image</span>
+          <small>Max 5 MB</small>
+        </div>
+        <img id="oImgPreview" src="" alt="" style="display:none;width:100%;height:100%;object-fit:cover;position:absolute;inset:0" />
+        <button type="button" id="oImgRemoveBtn" style="display:none" class="img-remove-btn" onclick="removeOfferImg(event)">✕ Remove</button>
+      </div>
+
+      <form id="offerForm" onsubmit="submitOffer(event)">
+        <input type="hidden" id="oSectionKey" />
+        <input type="hidden" id="oExistingImg" />
+
+        <div class="form-group">
+          <label>Eyebrow text <span class="label-hint">(small tag above the title)</span></label>
+          <input type="text" id="oEyebrow" placeholder="e.g. Limited Time" />
+        </div>
+
+        <div class="form-group">
+          <label>Title <span class="label-hint" id="oTitleHint">(supports &lt;br&gt; for line break and &lt;span&gt; for gold accent)</span></label>
+          <textarea id="oTitle" rows="2" placeholder="Up to &lt;span&gt;70% Off&lt;/span&gt;&lt;br&gt;the Entire Store"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>Subtitle</label>
+          <textarea id="oSubtitle" rows="2" placeholder="Don't miss our biggest sale of the season."></textarea>
+        </div>
+
+        <!-- Button fields (only shown for sections that have a button) -->
+        <div id="oButtonFields">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Button label</label>
+              <input type="text" id="oButtonLabel" placeholder="e.g. Shop the Sale" />
+            </div>
+            <div class="form-group">
+              <label>Button goes to</label>
+              <select id="oButtonTarget">
+                <option value="shop">Shop page</option>
+                <option value="collections">Collections page</option>
+                <option value="about">About page</option>
+                <option value="contact">Contact page</option>
+                <option value="home">Home page</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-ghost" onclick="closeOfferModal()">Cancel</button>
+          <button type="submit" class="btn-primary" id="offerSubmitBtn">
+            <span id="offerSubmitText">Save Changes</span>
+            <span class="spinner" id="offerSpinner" style="display:none"></span>
           </button>
         </div>
       </form>

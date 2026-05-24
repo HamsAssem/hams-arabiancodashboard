@@ -9,12 +9,13 @@ const { createClient } = supabase;
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 /* ── STATE ─────────────────────────────────────────────────── */
-let products    = [];
-let collections = [];
-let bundles     = [];
-let heroSlides  = [];   // [{ slot:1|2|3, image_path, updated_at }]
-let orders      = [];
-let customers   = [];
+let products     = [];
+let collections  = [];
+let bundles      = [];
+let heroSlides   = [];   // [{ slot, image_path, ... }]
+let homeSections = [];   // [{ section_key, eyebrow, title, subtitle, button_label, button_target, image_path }]
+let orders       = [];
+let customers    = [];
 let selectedImg       = null;
 let selectedBundleImg = null;
 let currentPage = 'dashboard';
@@ -103,6 +104,7 @@ async function loadAll() {
     fetchOrders(),
     fetchCustomers(),
     fetchHeroSlides(),
+    fetchHomeSections(),
   ]);
   await fetchBundles();
   updateStats();
@@ -359,6 +361,169 @@ async function deleteHeroSlide(id) {
   if (error) { toast('Delete failed: ' + error.message); return; }
   toast('Slide deleted ✓');
   await fetchHeroSlides();
+}
+
+/* ── OFFERS (home_sections) ────────────────────────────────── */
+// Which sections are editable + their friendly labels for the admin UI.
+const OFFER_SECTIONS = [
+  { key: 'promo_banner',   label: 'Promo Banner',  desc: 'The big "Up to 70% Off" panel between Best Sellers and Top Rated.', hasButton: true,  hasImage: true  },
+  { key: 'monthly_offers', label: 'Monthly Offers', desc: 'Section header above the monthly deals product grid.',              hasButton: false, hasImage: false },
+];
+
+let selectedOfferImg = null;
+
+async function fetchHomeSections() {
+  const { data, error } = await sb.from('home_sections').select('*');
+  if (error) { console.error(error); homeSections = []; renderOffers(); return; }
+  homeSections = data || [];
+  renderOffers();
+}
+
+function renderOffers() {
+  const grid = document.getElementById('offersGrid');
+  if (!grid) return;
+
+  grid.innerHTML = OFFER_SECTIONS.map(meta => {
+    const row = homeSections.find(s => s.section_key === meta.key) || {};
+    const url = row.image_path ? imgUrl(row.image_path) : '';
+    // Strip the small allowed HTML so the preview is clean text
+    const titlePreview = (row.title || '').replace(/<\/?(span|br\s*\/?)>/gi, '');
+
+    return `
+      <div class="hero-slot-card">
+        <div class="hero-slot-header">
+          <span class="hero-slot-label">${esc(meta.label)}</span>
+          <button class="row-btn" onclick="openOfferModal('${meta.key}')" title="Edit">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+        </div>
+        <div class="hero-slot-preview" style="${url ? `background-image:url('${url}')` : 'background:linear-gradient(135deg,#1A1D23,#3a3d44)'}">
+          <div class="hero-slot-overlay">
+            ${row.eyebrow ? `<span class="hero-slot-eyebrow">${esc(row.eyebrow)}</span>` : ''}
+            ${titlePreview ? `<div class="hero-slot-title">${esc(titlePreview)}</div>` : ''}
+            ${row.subtitle ? `<div class="hero-slot-sub">${esc(row.subtitle.slice(0,80))}${row.subtitle.length>80?'…':''}</div>` : ''}
+          </div>
+        </div>
+        <div class="hero-slot-footer" style="color:var(--text-muted)">
+          ${esc(meta.desc)}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function openOfferModal(sectionKey) {
+  const meta = OFFER_SECTIONS.find(s => s.key === sectionKey);
+  if (!meta) return;
+  const row  = homeSections.find(s => s.section_key === sectionKey) || {};
+
+  document.getElementById('offerForm').reset();
+  document.getElementById('offerModalTitle').textContent = 'Edit ' + meta.label;
+  document.getElementById('oSectionKey').value   = sectionKey;
+  document.getElementById('oExistingImg').value  = row.image_path || '';
+  document.getElementById('oEyebrow').value      = row.eyebrow || '';
+  document.getElementById('oTitle').value        = row.title || '';
+  document.getElementById('oSubtitle').value     = row.subtitle || '';
+  document.getElementById('oButtonLabel').value  = row.button_label || '';
+  document.getElementById('oButtonTarget').value = row.button_target || 'shop';
+
+  // Show/hide button + image fields based on whether this section supports them
+  document.getElementById('oButtonFields').style.display = meta.hasButton ? '' : 'none';
+  document.getElementById('oImgUploadZone').style.display = meta.hasImage ? '' : 'none';
+
+  // Adjust the title hint based on which markup is allowed for this section
+  const hintEl = document.getElementById('oTitleHint');
+  if (hintEl) {
+    hintEl.textContent = meta.key === 'promo_banner'
+      ? '(supports <br> for line break and <span>…</span> for gold accent)'
+      : '(plain text)';
+  }
+
+  selectedOfferImg = null;
+  clearOfferImgPreview();
+  if (meta.hasImage && row.image_path) showOfferImgPreview(imgUrl(row.image_path));
+
+  document.getElementById('offerModalOverlay').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function closeOfferModal() {
+  document.getElementById('offerModalOverlay').style.display = 'none';
+  document.body.style.overflow = '';
+  selectedOfferImg = null;
+  clearOfferImgPreview();
+}
+
+function handleOfferImgSelect(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) { toast('Image must be under 5 MB.'); return; }
+  selectedOfferImg = file;
+  showOfferImgPreview(URL.createObjectURL(file));
+}
+
+function showOfferImgPreview(url) {
+  document.getElementById('oImgPlaceholder').style.display = 'none';
+  const img = document.getElementById('oImgPreview');
+  img.src = url; img.style.display = 'block';
+  document.getElementById('oImgRemoveBtn').style.display = 'inline-flex';
+}
+
+function clearOfferImgPreview() {
+  const ph = document.getElementById('oImgPlaceholder');
+  if (ph) ph.style.display = 'flex';
+  const img = document.getElementById('oImgPreview');
+  if (img) { img.src = ''; img.style.display = 'none'; }
+  const rm = document.getElementById('oImgRemoveBtn');
+  if (rm) rm.style.display = 'none';
+  const fi = document.getElementById('oImgFileInput');
+  if (fi) fi.value = '';
+}
+
+function removeOfferImg(e) {
+  e.stopPropagation();
+  selectedOfferImg = null;
+  document.getElementById('oExistingImg').value = '';
+  clearOfferImgPreview();
+}
+
+async function submitOffer(e) {
+  e.preventDefault();
+  setLoading('offer', true);
+
+  const sectionKey = document.getElementById('oSectionKey').value;
+  const meta = OFFER_SECTIONS.find(s => s.key === sectionKey);
+
+  let imagePath = document.getElementById('oExistingImg').value || null;
+  if (meta?.hasImage && selectedOfferImg) {
+    const ext  = selectedOfferImg.name.split('.').pop().toLowerCase();
+    const path = `offers/${sectionKey}-${Date.now()}.${ext}`;
+    const { error: upErr } = await sb.storage.from(BUCKET).upload(path, selectedOfferImg, { cacheControl: '3600' });
+    if (upErr) { setLoading('offer', false); toast('Upload failed: ' + upErr.message); return; }
+    imagePath = path;
+  }
+
+  const payload = {
+    section_key:   sectionKey,
+    eyebrow:       document.getElementById('oEyebrow').value.trim() || null,
+    title:         document.getElementById('oTitle').value.trim() || null,
+    subtitle:      document.getElementById('oSubtitle').value.trim() || null,
+    button_label:  meta?.hasButton ? (document.getElementById('oButtonLabel').value.trim() || null) : null,
+    button_target: meta?.hasButton ? (document.getElementById('oButtonTarget').value || null) : null,
+    image_path:    meta?.hasImage ? imagePath : null,
+    updated_at:    new Date().toISOString(),
+  };
+
+  // Upsert by section_key (UNIQUE constraint makes this clean)
+  const { error } = await sb
+    .from('home_sections')
+    .upsert(payload, { onConflict: 'section_key' });
+
+  setLoading('offer', false);
+  if (error) { toast('Error: ' + error.message); return; }
+
+  toast('Section updated ✓');
+  closeOfferModal();
+  await fetchHomeSections();
 }
 
 /* ── STATS ─────────────────────────────────────────────────── */
@@ -1213,7 +1378,7 @@ function navigateTo(page) {
   document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.page === page));
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === `page-${page}`));
 
-  const titles = { dashboard: 'Dashboard', hero: 'Hero Banner', products: 'Products', collections: 'Collections', bundles: 'Bundles', orders: 'Orders', customers: 'Customers' };
+  const titles = { dashboard: 'Dashboard', hero: 'Hero Banner', offers: 'Offers', products: 'Products', collections: 'Collections', bundles: 'Bundles', orders: 'Orders', customers: 'Customers' };
   document.getElementById('pageTitle').textContent = titles[page] || page;
 }
 
