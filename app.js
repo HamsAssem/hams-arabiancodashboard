@@ -16,8 +16,9 @@ let heroSlides   = [];   // [{ slot, image_path, ... }]
 let homeSections = [];   // [{ section_key, eyebrow, title, subtitle, button_label, button_target, image_path }]
 let orders       = [];
 let customers    = [];
-let selectedImg       = null;
-let selectedBundleImg = null;
+let selectedImg           = null;
+let selectedBundleImg     = null;
+let selectedCollectionImg = null;
 let currentPage = 'dashboard';
 let pendingDeleteFn = null;
 let appInitialized  = false;
@@ -845,7 +846,9 @@ function renderCollectionTable(list = collections) {
   body.innerHTML = list.map(c => {
     const count = products.filter(p => p.collection_id === c.id).length;
     const date  = new Date(c.created_at).toLocaleDateString();
+    const url   = imgUrl(c.image_path);
     return `<tr>
+      <td>${url ? `<img class="table-thumb" src="${url}" alt="" />` : `<div class="table-thumb-placeholder">IMG</div>`}</td>
       <td><strong>${esc(c.name)}</strong></td>
       <td style="color:var(--text-muted)">${c.description ? esc(c.description.slice(0,60)) + (c.description.length > 60 ? '…' : '') : '—'}</td>
       <td><span class="pill" style="background:#EDE9FE;color:#5B21B6">${count} product${count !== 1 ? 's' : ''}</span></td>
@@ -873,6 +876,9 @@ function filterCollectionTable() {
 function openCollectionModal() {
   document.getElementById('collectionForm').reset();
   document.getElementById('cEditId').value = '';
+  document.getElementById('cExistingImg').value = '';
+  selectedCollectionImg = null;
+  clearCollectionImgPreview();
   document.getElementById('collectionModalTitle').textContent = 'Add Collection';
   document.getElementById('collectionSubmitText').textContent = 'Save Collection';
   document.getElementById('collectionModalOverlay').style.display = 'flex';
@@ -888,21 +894,35 @@ function openEditCollection(id) {
   document.getElementById('cEditId').value = id;
   document.getElementById('cName').value   = c.name || '';
   document.getElementById('cDesc').value   = c.description || '';
+  document.getElementById('cExistingImg').value = c.image_path || '';
+  if (c.image_path) showCollectionImgPreview(imgUrl(c.image_path));
 }
 
 function closeCollectionModal() {
   document.getElementById('collectionModalOverlay').style.display = 'none';
   document.body.style.overflow = '';
+  selectedCollectionImg = null;
+  clearCollectionImgPreview();
 }
 
 async function submitCollection(e) {
   e.preventDefault();
   setLoading('collection', true);
 
+  let imagePath = document.getElementById('cExistingImg').value || null;
+  if (selectedCollectionImg) {
+    const ext  = selectedCollectionImg.name.split('.').pop().toLowerCase();
+    const path = `collections/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error: upErr } = await sb.storage.from(BUCKET).upload(path, selectedCollectionImg, { cacheControl: '3600' });
+    if (upErr) { setLoading('collection', false); toast('Upload failed: ' + upErr.message); return; }
+    imagePath = path;
+  }
+
   const editId  = document.getElementById('cEditId').value;
   const payload = {
     name:        document.getElementById('cName').value.trim(),
     description: document.getElementById('cDesc').value.trim() || null,
+    image_path:  imagePath,
   };
 
   const { error } = editId
@@ -917,6 +937,40 @@ async function submitCollection(e) {
   await fetchCollections();
   updateStats();
   renderDashboard();
+}
+
+/* Collection image upload helpers (mirror the product/bundle ones) */
+function handleCollectionImgSelect(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) { toast('Image must be under 5 MB.'); return; }
+  selectedCollectionImg = file;
+  showCollectionImgPreview(URL.createObjectURL(file));
+}
+
+function showCollectionImgPreview(url) {
+  document.getElementById('cImgPlaceholder').style.display = 'none';
+  const img = document.getElementById('cImgPreview');
+  img.src = url; img.style.display = 'block';
+  document.getElementById('cImgRemoveBtn').style.display = 'inline-flex';
+}
+
+function clearCollectionImgPreview() {
+  const ph = document.getElementById('cImgPlaceholder');
+  if (ph) ph.style.display = 'flex';
+  const img = document.getElementById('cImgPreview');
+  if (img) { img.src = ''; img.style.display = 'none'; }
+  const rm = document.getElementById('cImgRemoveBtn');
+  if (rm) rm.style.display = 'none';
+  const fi = document.getElementById('cImgFileInput');
+  if (fi) fi.value = '';
+}
+
+function removeCollectionImg(e) {
+  e.stopPropagation();
+  selectedCollectionImg = null;
+  document.getElementById('cExistingImg').value = '';
+  clearCollectionImgPreview();
 }
 
 /* ── BUNDLES TABLE ─────────────────────────────────────────── */
@@ -1339,6 +1393,10 @@ function confirmDelete(type, id, name) {
       toast('Bundle deleted.');
       await fetchBundles();
     } else {
+      const c = collections.find(x => x.id === id);
+      if (c?.image_path && !c.image_path.startsWith('http')) {
+        await sb.storage.from(BUCKET).remove([c.image_path]);
+      }
       await sb.from('collections').delete().eq('id', id);
       toast('Collection deleted.');
       await fetchCollections();

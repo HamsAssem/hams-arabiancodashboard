@@ -208,6 +208,7 @@
           <table class="data-table" id="collectionsTable">
             <thead>
               <tr>
+                <th style="width:52px">Image</th>
                 <th>Name</th>
                 <th>Description</th>
                 <th>Products</th>
@@ -421,8 +422,20 @@
         <h2 id="collectionModalTitle">Add Collection</h2>
         <button class="modal-close-btn" onclick="closeCollectionModal()">✕</button>
       </div>
+      <div class="img-upload" id="cImgUploadZone" onclick="document.getElementById('cImgFileInput').click()">
+        <input type="file" id="cImgFileInput" accept="image/*" style="display:none" onchange="handleCollectionImgSelect(event)" />
+        <div id="cImgPlaceholder">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" width="32" height="32"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <span>Click to upload collection image</span>
+          <small>PNG · JPG · WEBP · max 5 MB</small>
+        </div>
+        <img id="cImgPreview" src="" alt="" style="display:none;width:100%;height:100%;object-fit:cover;position:absolute;inset:0" />
+        <button type="button" id="cImgRemoveBtn" style="display:none" class="img-remove-btn" onclick="removeCollectionImg(event)">✕ Remove</button>
+      </div>
+
       <form id="collectionForm" onsubmit="submitCollection(event)">
         <input type="hidden" id="cEditId" />
+        <input type="hidden" id="cExistingImg" />
         <div class="form-group">
           <label>Collection Name *</label>
           <input type="text" id="cName" required placeholder="e.g. Vitamin C Line" />
