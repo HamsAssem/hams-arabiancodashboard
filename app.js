@@ -380,46 +380,127 @@ async function fetchHomeSections() {
   renderOffers();
 }
 
+function offerCardHTML(meta, row) {
+  const isPlaceholder = !row;
+  const id      = row?.id || '';
+  const url     = row?.image_path ? imgUrl(row.image_path) : '';
+  const title   = (row?.title || '').replace(/<\/?(span|br\s*\/?)>/gi, '');
+  const inactive = row && row.is_active === false;
+  const subPrev = row?.subtitle ? row.subtitle.replace(/\n/g, ' · ').slice(0, 80) : '';
+
+  return `
+    <div class="hero-slot-card${inactive ? ' inactive' : ''}">
+      <div class="hero-slot-header">
+        <span class="hero-slot-label">
+          ${esc(meta.label)}${row?.position && meta.key === 'promo_banner' ? ` <span style="color:var(--text-muted);font-weight:400;font-size:.75rem">· #${row.position}</span>` : ''}
+        </span>
+        <div class="row-actions">
+          ${isPlaceholder
+            ? `<button class="row-btn" onclick="openOfferModal('${meta.key}', '')" title="Create"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>`
+            : `
+            <button class="row-btn" onclick="toggleOfferActive('${id}', ${!inactive})" title="${inactive ? 'Activate' : 'Deactivate'}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M${inactive ? '12 2v20' : '12 12h.01'}"/><circle cx="12" cy="12" r="10"/></svg>
+            </button>
+            <button class="row-btn" onclick="openOfferModal('${meta.key}', '${id}')" title="Edit">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+            <button class="row-btn danger" onclick="deleteOffer('${id}')" title="Delete">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+            </button>`
+          }
+        </div>
+      </div>
+      <div class="hero-slot-preview" style="${url ? `background-image:url('${url}')` : 'background:linear-gradient(135deg,#1A1D23,#3a3d44)'}">
+        ${(row?.eyebrow || title || subPrev) ? `
+        <div class="hero-slot-overlay">
+          ${row?.eyebrow ? `<span class="hero-slot-eyebrow">${esc(row.eyebrow)}</span>` : ''}
+          ${title ? `<div class="hero-slot-title">${esc(title)}</div>` : ''}
+          ${subPrev ? `<div class="hero-slot-sub">${esc(subPrev)}${row.subtitle.length>80?'…':''}</div>` : ''}
+        </div>` : ''}
+      </div>
+      <div class="hero-slot-footer" style="color:var(--text-muted)">
+        ${isPlaceholder
+          ? `<em>Not configured yet — using hardcoded default. Click + to customise.</em>`
+          : inactive
+            ? `<span class="pill pill-inactive">Hidden from storefront</span>`
+            : esc(meta.desc)}
+      </div>
+    </div>`;
+}
+
 function renderOffers() {
   const grid = document.getElementById('offersGrid');
   if (!grid) return;
 
-  grid.innerHTML = OFFER_SECTIONS.map(meta => {
-    const row = homeSections.find(s => s.section_key === meta.key) || {};
-    const url = row.image_path ? imgUrl(row.image_path) : '';
-    // Strip the small allowed HTML so the preview is clean text
-    const titlePreview = (row.title || '').replace(/<\/?(span|br\s*\/?)>/gi, '');
+  const singletonMetas = OFFER_SECTIONS.filter(s => s.key !== 'promo_banner');
+  const promoMeta      = OFFER_SECTIONS.find(s => s.key === 'promo_banner');
+  const promoRows      = homeSections
+    .filter(s => s.section_key === 'promo_banner')
+    .sort((a, b) => (a.position || 1) - (b.position || 1));
 
-    return `
-      <div class="hero-slot-card">
-        <div class="hero-slot-header">
-          <span class="hero-slot-label">${esc(meta.label)}</span>
-          <button class="row-btn" onclick="openOfferModal('${meta.key}')" title="Edit">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-          </button>
-        </div>
-        <div class="hero-slot-preview" style="${url ? `background-image:url('${url}')` : 'background:linear-gradient(135deg,#1A1D23,#3a3d44)'}">
-          <div class="hero-slot-overlay">
-            ${row.eyebrow ? `<span class="hero-slot-eyebrow">${esc(row.eyebrow)}</span>` : ''}
-            ${titlePreview ? `<div class="hero-slot-title">${esc(titlePreview)}</div>` : ''}
-            ${row.subtitle ? `<div class="hero-slot-sub">${esc(row.subtitle.slice(0,80))}${row.subtitle.length>80?'…':''}</div>` : ''}
-          </div>
-        </div>
-        <div class="hero-slot-footer" style="color:var(--text-muted)">
-          ${esc(meta.desc)}
-        </div>
-      </div>`;
+  // Singletons: one card each (announcement_bar, monthly_offers)
+  let html = singletonMetas.map(meta => {
+    const row = homeSections.find(s => s.section_key === meta.key);
+    return offerCardHTML(meta, row);
   }).join('');
+
+  // Promo banners — section heading + "Add" button + N cards
+  html += `
+    <div class="offers-section-divider">
+      <div>
+        <h3>Promo Banners</h3>
+        <p class="label-hint">Multiple banners stack on the home page in order of position</p>
+      </div>
+      <button class="btn-primary" onclick="openOfferModal('promo_banner', '')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Promo Banner
+      </button>
+    </div>`;
+
+  if (promoRows.length) {
+    html += promoRows.map(row => offerCardHTML(promoMeta, row)).join('');
+  } else {
+    html += `<div class="table-empty">No promo banners yet — the storefront shows the default "Up to 70% Off" panel until you add one.</div>`;
+  }
+
+  grid.innerHTML = html;
 }
 
-function openOfferModal(sectionKey) {
+async function toggleOfferActive(id, makeActive) {
+  const { error } = await sb
+    .from('home_sections')
+    .update({ is_active: makeActive, updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) { toast('Error: ' + error.message); return; }
+  toast(makeActive ? 'Section activated ✓' : 'Section hidden ✓');
+  await fetchHomeSections();
+}
+
+async function deleteOffer(id) {
+  if (!confirm('Delete this section? The storefront will revert to its hardcoded default.')) return;
+  const row = homeSections.find(s => s.id === id);
+  // Clean up the storage file if this section had an admin-uploaded image
+  if (row?.image_path && !row.image_path.startsWith('http')) {
+    await sb.storage.from(BUCKET).remove([row.image_path]);
+  }
+  const { error } = await sb.from('home_sections').delete().eq('id', id);
+  if (error) { toast('Delete failed: ' + error.message); return; }
+  toast('Deleted ✓');
+  await fetchHomeSections();
+}
+
+function openOfferModal(sectionKey, id = '') {
   const meta = OFFER_SECTIONS.find(s => s.key === sectionKey);
   if (!meta) return;
-  const row  = homeSections.find(s => s.section_key === sectionKey) || {};
+  // If editing, look up by id; otherwise start with empty defaults.
+  const row = id ? (homeSections.find(s => s.id === id) || {}) : {};
 
   document.getElementById('offerForm').reset();
-  document.getElementById('offerModalTitle').textContent = 'Edit ' + meta.label;
+  document.getElementById('offerModalTitle').textContent = (id ? 'Edit ' : 'Add ') + meta.label;
+  // Stash the editing id and section_key on the hidden inputs
   document.getElementById('oSectionKey').value   = sectionKey;
+  const oEditId = document.getElementById('oEditId');
+  if (oEditId) oEditId.value = id || '';
   document.getElementById('oExistingImg').value  = row.image_path || '';
   document.getElementById('oEyebrow').value      = row.eyebrow || '';
   document.getElementById('oTitle').value        = row.title || '';
@@ -520,6 +601,8 @@ async function submitOffer(e) {
     imagePath = path;
   }
 
+  const editId = document.getElementById('oEditId')?.value || '';
+
   const payload = {
     section_key:   sectionKey,
     eyebrow:       document.getElementById('oEyebrow').value.trim() || null,
@@ -531,15 +614,28 @@ async function submitOffer(e) {
     updated_at:    new Date().toISOString(),
   };
 
-  // Upsert by section_key (UNIQUE constraint makes this clean)
-  const { error } = await sb
-    .from('home_sections')
-    .upsert(payload, { onConflict: 'section_key' });
+  let error;
+  if (editId) {
+    // Update existing row by id
+    const res = await sb.from('home_sections').update(payload).eq('id', editId);
+    error = res.error;
+  } else if (sectionKey === 'promo_banner') {
+    // New promo banner — assign next position
+    const maxPos = homeSections
+      .filter(s => s.section_key === 'promo_banner')
+      .reduce((m, s) => Math.max(m, s.position || 0), 0);
+    const res = await sb.from('home_sections').insert({ ...payload, position: maxPos + 1 });
+    error = res.error;
+  } else {
+    // New singleton (announcement_bar / monthly_offers) — only one should exist
+    const res = await sb.from('home_sections').insert(payload);
+    error = res.error;
+  }
 
   setLoading('offer', false);
   if (error) { toast('Error: ' + error.message); return; }
 
-  toast('Section updated ✓');
+  toast('Section saved ✓');
   closeOfferModal();
   await fetchHomeSections();
 }

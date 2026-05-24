@@ -290,6 +290,28 @@ input:focus, textarea:focus, select:focus { border-color: var(--gold); box-shado
 .bundle-original-total { margin-top: 10px; font-size: .82rem; color: var(--text-muted); }
 .bundle-original-total strong { color: var(--text); font-weight: 600; }
 
+/* Offers tab — divider between fixed sections and promo banner list */
+.offers-section-divider {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.offers-section-divider h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0;
+}
+.hero-slot-card.inactive {
+  opacity: .55;
+  filter: grayscale(.2);
+}
+
 /* ── HERO SLIDE CARDS ────────────────────────────────────── */
 .hero-slots-grid {
   display: grid;
