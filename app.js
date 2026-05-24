@@ -172,92 +172,188 @@ async function fetchBundles() {
 }
 
 /* ── HERO BANNER ───────────────────────────────────────────── */
-// Defaults match the URLs hardcoded in skincare-shop/index.html. The
-// storefront falls back to these when a slot has no DB row.
-const HERO_DEFAULTS = {
-  1: 'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=1600&q=80',
-  2: 'https://images.unsplash.com/photo-1556228578-8c89e6adf883?w=1600&q=80',
-  3: 'https://images.unsplash.com/photo-1614806687007-2215b2c15bc8?w=1600&q=80',
-};
+let selectedHeroImg = null;
 
 async function fetchHeroSlides() {
-  const { data, error } = await sb.from('hero_slides').select('*').order('slot');
+  const { data, error } = await sb
+    .from('hero_slides')
+    .select('*')
+    .order('slot', { ascending: true });
   if (error) { console.error(error); heroSlides = []; renderHeroSlots(); return; }
   heroSlides = data || [];
   renderHeroSlots();
 }
 
 function renderHeroSlots() {
-  const grid = document.getElementById('heroSlotsGrid');
+  const grid  = document.getElementById('heroSlotsGrid');
+  const empty = document.getElementById('heroEmpty');
   if (!grid) return;
-  const slots = [1, 2, 3];
-  grid.innerHTML = slots.map(slot => {
-    const row = heroSlides.find(s => s.slot === slot);
-    const customUrl = row ? imgUrl(row.image_path) : null;
-    const displayUrl = customUrl || HERO_DEFAULTS[slot];
-    const isCustom = !!row;
+
+  if (!heroSlides.length) {
+    grid.innerHTML = '';
+    if (empty) empty.style.display = 'block';
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+
+  grid.innerHTML = heroSlides.map(s => {
+    const url = imgUrl(s.image_path) || '';
+    const titlePreview = (s.title || '').replace(/<br\s*\/?>(?:\s)*/gi, ' / ').replace(/<\/?em>/gi, '');
     return `
       <div class="hero-slot-card">
         <div class="hero-slot-header">
-          <span class="hero-slot-label">Slide ${slot}</span>
-          ${isCustom
-            ? '<span class="pill pill-active">Custom</span>'
-            : '<span class="pill pill-inactive">Default</span>'}
+          <span class="hero-slot-label">Slide #${s.slot}</span>
+          <div class="row-actions">
+            <button class="row-btn" onclick="openHeroModal('${s.id}')" title="Edit">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+            <button class="row-btn danger" onclick="deleteHeroSlide('${s.id}')" title="Delete">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+            </button>
+          </div>
         </div>
-        <div class="hero-slot-preview" style="background-image:url('${displayUrl}')"></div>
-        <div class="hero-slot-actions">
-          <input type="file" id="heroFile${slot}" accept="image/*" style="display:none" onchange="handleHeroUpload(${slot}, event)" />
-          <button class="btn-primary" onclick="document.getElementById('heroFile${slot}').click()">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            ${isCustom ? 'Replace' : 'Upload'}
-          </button>
-          ${isCustom
-            ? `<button class="btn-ghost" onclick="resetHeroSlot(${slot})">Reset to default</button>`
-            : ''}
+        <div class="hero-slot-preview" style="background-image:url('${url}')">
+          ${(s.eyebrow || s.title || s.subtitle) ? `
+            <div class="hero-slot-overlay">
+              ${s.eyebrow ? `<span class="hero-slot-eyebrow">${esc(s.eyebrow)}</span>` : ''}
+              ${titlePreview ? `<div class="hero-slot-title">${esc(titlePreview)}</div>` : ''}
+              ${s.subtitle ? `<div class="hero-slot-sub">${esc(s.subtitle.slice(0,80))}${s.subtitle.length>80?'…':''}</div>` : ''}
+            </div>` : ''}
+        </div>
+        <div class="hero-slot-footer">
+          ${s.button_label ? `<span class="pill pill-active">Button: ${esc(s.button_label)} → ${esc(s.button_target || 'shop')}</span>` : '<span class="pill pill-inactive">No button</span>'}
         </div>
       </div>`;
   }).join('');
 }
 
-async function handleHeroUpload(slot, e) {
+function openHeroModal(id = null) {
+  document.getElementById('heroForm').reset();
+  document.getElementById('hEditId').value = id || '';
+  document.getElementById('hExistingImg').value = '';
+  selectedHeroImg = null;
+  clearHeroImgPreview();
+
+  if (id) {
+    const s = heroSlides.find(x => x.id === id);
+    if (s) {
+      document.getElementById('heroModalTitle').textContent = 'Edit Slide';
+      document.getElementById('heroSubmitText').textContent = 'Save Changes';
+      document.getElementById('hSlot').value         = s.slot ?? 1;
+      document.getElementById('hEyebrow').value      = s.eyebrow || '';
+      document.getElementById('hTitle').value        = s.title || '';
+      document.getElementById('hSubtitle').value     = s.subtitle || '';
+      document.getElementById('hButtonLabel').value  = s.button_label || '';
+      document.getElementById('hButtonTarget').value = s.button_target || 'shop';
+      document.getElementById('hExistingImg').value  = s.image_path || '';
+      if (s.image_path) showHeroImgPreview(imgUrl(s.image_path));
+    }
+  } else {
+    document.getElementById('heroModalTitle').textContent = 'Add Slide';
+    document.getElementById('heroSubmitText').textContent = 'Save Slide';
+    // Default new slide position = max existing + 1
+    const nextSlot = (heroSlides.reduce((m, s) => Math.max(m, s.slot || 0), 0)) + 1;
+    document.getElementById('hSlot').value = nextSlot;
+  }
+
+  document.getElementById('heroModalOverlay').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function closeHeroModal() {
+  document.getElementById('heroModalOverlay').style.display = 'none';
+  document.body.style.overflow = '';
+  selectedHeroImg = null;
+  clearHeroImgPreview();
+}
+
+function handleHeroImgSelect(e) {
   const file = e.target.files[0];
   if (!file) return;
   if (file.size > 5 * 1024 * 1024) { toast('Image must be under 5 MB.'); return; }
+  selectedHeroImg = file;
+  showHeroImgPreview(URL.createObjectURL(file));
+}
 
-  toast('Uploading slide ' + slot + '…');
-  const ext  = file.name.split('.').pop().toLowerCase();
-  const path = `hero/${slot}-${Date.now()}.${ext}`;
-  const { error: upErr } = await sb.storage.from(BUCKET).upload(path, file, { cacheControl: '3600' });
-  if (upErr) { toast('Upload failed: ' + upErr.message); return; }
+function showHeroImgPreview(url) {
+  document.getElementById('hImgPlaceholder').style.display = 'none';
+  const img = document.getElementById('hImgPreview');
+  img.src = url; img.style.display = 'block';
+  document.getElementById('hImgRemoveBtn').style.display = 'inline-flex';
+}
 
-  // Remove the old uploaded file (if any) before swapping the DB row.
-  const existing = heroSlides.find(s => s.slot === slot);
-  if (existing && existing.image_path && !existing.image_path.startsWith('http')) {
-    await sb.storage.from(BUCKET).remove([existing.image_path]);
+function clearHeroImgPreview() {
+  const ph = document.getElementById('hImgPlaceholder');
+  if (ph) ph.style.display = 'flex';
+  const img = document.getElementById('hImgPreview');
+  if (img) { img.src = ''; img.style.display = 'none'; }
+  const rm = document.getElementById('hImgRemoveBtn');
+  if (rm) rm.style.display = 'none';
+  const fi = document.getElementById('hImgFileInput');
+  if (fi) fi.value = '';
+}
+
+function removeHeroImg(e) {
+  e.stopPropagation();
+  selectedHeroImg = null;
+  document.getElementById('hExistingImg').value = '';
+  clearHeroImgPreview();
+}
+
+async function submitHeroSlide(e) {
+  e.preventDefault();
+  setLoading('hero', true);
+
+  let imagePath = document.getElementById('hExistingImg').value || null;
+
+  if (selectedHeroImg) {
+    const ext  = selectedHeroImg.name.split('.').pop().toLowerCase();
+    const path = `hero/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const { error: upErr } = await sb.storage.from(BUCKET).upload(path, selectedHeroImg, { cacheControl: '3600' });
+    if (upErr) { setLoading('hero', false); toast('Upload failed: ' + upErr.message); return; }
+    imagePath = path;
   }
 
-  // Upsert by slot. The UNIQUE constraint on hero_slides.slot makes this clean.
-  const { error: dbErr } = await sb
-    .from('hero_slides')
-    .upsert({ slot, image_path: path, updated_at: new Date().toISOString() }, { onConflict: 'slot' });
-  if (dbErr) { toast('Saved file, but DB update failed: ' + dbErr.message); return; }
+  if (!imagePath) { setLoading('hero', false); toast('Please upload an image.'); return; }
 
-  toast('Slide ' + slot + ' updated ✓');
-  // Clear the file input so the user can re-upload the same filename later
-  const fi = document.getElementById('heroFile' + slot);
-  if (fi) fi.value = '';
+  const payload = {
+    slot:          parseInt(document.getElementById('hSlot').value) || 1,
+    image_path:    imagePath,
+    eyebrow:       document.getElementById('hEyebrow').value.trim() || null,
+    title:         document.getElementById('hTitle').value.trim() || null,
+    subtitle:      document.getElementById('hSubtitle').value.trim() || null,
+    button_label:  document.getElementById('hButtonLabel').value.trim() || null,
+    button_target: document.getElementById('hButtonTarget').value || null,
+    updated_at:    new Date().toISOString(),
+  };
+
+  const editId = document.getElementById('hEditId').value;
+  let error;
+  if (editId) {
+    const res = await sb.from('hero_slides').update(payload).eq('id', editId);
+    error = res.error;
+  } else {
+    const res = await sb.from('hero_slides').insert(payload);
+    error = res.error;
+  }
+
+  setLoading('hero', false);
+  if (error) { toast('Error: ' + error.message); return; }
+
+  toast(editId ? 'Slide updated ✓' : 'Slide added ✓');
+  closeHeroModal();
   await fetchHeroSlides();
 }
 
-async function resetHeroSlot(slot) {
-  const existing = heroSlides.find(s => s.slot === slot);
-  if (!existing) return;
-  if (existing.image_path && !existing.image_path.startsWith('http')) {
-    await sb.storage.from(BUCKET).remove([existing.image_path]);
+async function deleteHeroSlide(id) {
+  if (!confirm('Delete this slide?')) return;
+  const s = heroSlides.find(x => x.id === id);
+  if (s && s.image_path && !s.image_path.startsWith('http')) {
+    await sb.storage.from(BUCKET).remove([s.image_path]);
   }
-  const { error } = await sb.from('hero_slides').delete().eq('slot', slot);
-  if (error) { toast('Reset failed: ' + error.message); return; }
-  toast('Slide ' + slot + ' reset to default ✓');
+  const { error } = await sb.from('hero_slides').delete().eq('id', id);
+  if (error) { toast('Delete failed: ' + error.message); return; }
+  toast('Slide deleted ✓');
   await fetchHeroSlides();
 }
 

@@ -119,14 +119,20 @@
 
       <!-- ══ HERO BANNER ══ -->
       <section class="page" id="page-hero">
-        <div class="card" style="padding: 20px 24px 8px">
-          <h2 style="font-size:.95rem;font-weight:600;margin-bottom:6px">Home page hero slides</h2>
-          <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:0">
-            The storefront shows 3 rotating slides on the home page. Upload an image for each slot below to replace the default.
-            Recommended size: 1600×900 px or larger. Max 5 MB.
-          </p>
+        <div class="page-toolbar">
+          <div style="flex:1">
+            <h2 style="font-size:.95rem;font-weight:600;margin-bottom:4px">Home page hero slides</h2>
+            <p style="font-size:.82rem;color:var(--text-muted);margin:0">
+              Slides rotate in order of <strong>position</strong> (lowest first). Add as many as you want. Image is required; text and button are optional.
+            </p>
+          </div>
+          <button class="btn-primary" onclick="openHeroModal()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Slide
+          </button>
         </div>
         <div class="hero-slots-grid" id="heroSlotsGrid"></div>
+        <div class="table-empty" id="heroEmpty" style="display:none">No hero slides yet — the storefront is showing the 3 default slides. Click "Add Slide" to start customising.</div>
       </section>
 
       <!-- ══ PRODUCTS ══ -->
@@ -494,6 +500,78 @@
           <button type="submit" class="btn-primary" id="bundleSubmitBtn">
             <span id="bundleSubmitText">Save Bundle</span>
             <span class="spinner" id="bundleSpinner" style="display:none"></span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ░░ HERO SLIDE MODAL ░░ -->
+  <div class="modal-overlay" id="heroModalOverlay" style="display:none" onclick="closeOnBackdrop(event,'heroModalOverlay')">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="heroModalTitle">Add Slide</h2>
+        <button class="modal-close-btn" onclick="closeHeroModal()">✕</button>
+      </div>
+
+      <div class="img-upload" id="hImgUploadZone" onclick="document.getElementById('hImgFileInput').click()">
+        <input type="file" id="hImgFileInput" accept="image/*" style="display:none" onchange="handleHeroImgSelect(event)" />
+        <div id="hImgPlaceholder">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" width="32" height="32"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <span>Click to upload slide image</span>
+          <small>Recommended 1600×900 · max 5 MB</small>
+        </div>
+        <img id="hImgPreview" src="" alt="" style="display:none;width:100%;height:100%;object-fit:cover;position:absolute;inset:0" />
+        <button type="button" id="hImgRemoveBtn" style="display:none" class="img-remove-btn" onclick="removeHeroImg(event)">✕ Remove</button>
+      </div>
+
+      <form id="heroForm" onsubmit="submitHeroSlide(event)">
+        <input type="hidden" id="hEditId" />
+        <input type="hidden" id="hExistingImg" />
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Position * <span class="label-hint">(lower = shown first)</span></label>
+            <input type="number" id="hSlot" min="1" required value="1" />
+          </div>
+          <div class="form-group">
+            <label>Eyebrow text</label>
+            <input type="text" id="hEyebrow" placeholder="e.g. Complete Beauty Program" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Title <span class="label-hint">(supports &lt;br&gt; for line break and &lt;em&gt; for gold italic)</span></label>
+          <textarea id="hTitle" rows="2" placeholder="Skin That Speaks&lt;br&gt;&lt;em&gt;Confidence&lt;/em&gt;"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>Subtitle</label>
+          <textarea id="hSubtitle" rows="2" placeholder="Clinically proven formulas crafted for radiant, youthful skin."></textarea>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Button label</label>
+            <input type="text" id="hButtonLabel" placeholder="e.g. Shop Now" />
+          </div>
+          <div class="form-group">
+            <label>Button goes to</label>
+            <select id="hButtonTarget">
+              <option value="shop">Shop page</option>
+              <option value="collections">Collections page</option>
+              <option value="about">About page</option>
+              <option value="contact">Contact page</option>
+              <option value="home">Home page</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-ghost" onclick="closeHeroModal()">Cancel</button>
+          <button type="submit" class="btn-primary" id="heroSubmitBtn">
+            <span id="heroSubmitText">Save Slide</span>
+            <span class="spinner" id="heroSpinner" style="display:none"></span>
           </button>
         </div>
       </form>
