@@ -366,8 +366,9 @@ async function deleteHeroSlide(id) {
 /* ── OFFERS (home_sections) ────────────────────────────────── */
 // Which sections are editable + their friendly labels for the admin UI.
 const OFFER_SECTIONS = [
-  { key: 'promo_banner',   label: 'Promo Banner',  desc: 'The big "Up to 70% Off" panel between Best Sellers and Top Rated.', hasButton: true,  hasImage: true  },
-  { key: 'monthly_offers', label: 'Monthly Offers', desc: 'Section header above the monthly deals product grid.',              hasButton: false, hasImage: false },
+  { key: 'announcement_bar', label: 'Announcement Bar', desc: 'Scrolling messages at the very top of every page. One message per line.', hasButton: false, hasImage: false, messagesField: true },
+  { key: 'promo_banner',     label: 'Promo Banner',     desc: 'The big "Up to 70% Off" panel between Best Sellers and Top Rated.',     hasButton: true,  hasImage: true,  messagesField: false },
+  { key: 'monthly_offers',   label: 'Monthly Offers',   desc: 'Section header above the monthly deals product grid.',                  hasButton: false, hasImage: false, messagesField: false },
 ];
 
 let selectedOfferImg = null;
@@ -429,6 +430,23 @@ function openOfferModal(sectionKey) {
   // Show/hide button + image fields based on whether this section supports them
   document.getElementById('oButtonFields').style.display = meta.hasButton ? '' : 'none';
   document.getElementById('oImgUploadZone').style.display = meta.hasImage ? '' : 'none';
+
+  // The announcement bar is just a list of scrolling messages. Hide
+  // eyebrow + title; relabel the subtitle textarea as "Messages".
+  const eyebrowGroup = document.getElementById('oEyebrow').closest('.form-group');
+  const titleGroup   = document.getElementById('oTitle').closest('.form-group');
+  const subtitleLabel = document.getElementById('oSubtitle').closest('.form-group').querySelector('label');
+  if (meta.messagesField) {
+    if (eyebrowGroup) eyebrowGroup.style.display = 'none';
+    if (titleGroup)   titleGroup.style.display   = 'none';
+    if (subtitleLabel) subtitleLabel.innerHTML = 'Messages <span class="label-hint">(one per line — they scroll left across the top of every page)</span>';
+    document.getElementById('oSubtitle').rows = 5;
+  } else {
+    if (eyebrowGroup) eyebrowGroup.style.display = '';
+    if (titleGroup)   titleGroup.style.display   = '';
+    if (subtitleLabel) subtitleLabel.textContent = 'Subtitle';
+    document.getElementById('oSubtitle').rows = 2;
+  }
 
   // Adjust the title hint based on which markup is allowed for this section
   const hintEl = document.getElementById('oTitleHint');
