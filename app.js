@@ -14,6 +14,7 @@ let collections  = [];
 let bundles      = [];
 let heroSlides   = [];   // [{ slot, image_path, ... }]
 let homeSections = [];   // [{ section_key, eyebrow, title, subtitle, button_label, button_target, image_path }]
+let promotions   = [];   // [{ id, name, type, collection_id, percent, buy_qty, get_qty, is_active }]
 let orders       = [];
 let customers    = [];
 let selectedImg           = null;
@@ -106,6 +107,7 @@ async function loadAll() {
     fetchCustomers(),
     fetchHeroSlides(),
     fetchHomeSections(),
+    fetchPromotions(),
   ]);
   await fetchBundles();
   updateStats();
@@ -1229,6 +1231,179 @@ async function uploadBundleImg(file) {
   return { path, error: null };
 }
 
+/* ── PROMOTIONS ─────────────────────────────────────────────
+   Real discounts that change prices on the storefront and at
+   checkout (server enforces via the place_order RPC).
+   ────────────────────────────────────────────────────────── */
+const PROMO_TYPE_LABELS = {
+  percent_off:             'X% off',
+  buy_x_get_y_free:        'Buy X, get Y free',
+  buy_x_get_y_percent_off: 'Buy X, get Y at Z% off',
+};
+
+function promotionSummary(pr) {
+  if (pr.type === 'percent_off')             return `${pr.percent || 0}% off`;
+  if (pr.type === 'buy_x_get_y_free')        return `Buy ${pr.buy_qty || 0}, get ${pr.get_qty || 0} free`;
+  if (pr.type === 'buy_x_get_y_percent_off') return `Buy ${pr.buy_qty || 0}, get ${pr.get_qty || 0} at ${pr.percent || 0}% off`;
+  return pr.type;
+}
+
+async function fetchPromotions() {
+  const { data, error } = await sb
+    .from('promotions')
+    .select('*, collections(name)')
+    .order('created_at', { ascending: false });
+  if (error) { console.error(error); promotions = []; renderPromotionTable(); return; }
+  promotions = data || [];
+  renderPromotionTable();
+  const badge = document.getElementById('navPromotionCount');
+  if (badge) badge.textContent = promotions.length;
+}
+
+function renderPromotionTable(list = promotions) {
+  const body  = document.getElementById('promotionsBody');
+  const empty = document.getElementById('promotionsEmpty');
+  if (!body) return;
+
+  if (!list.length) {
+    body.innerHTML = '';
+    empty.style.display = 'block';
+    document.querySelector('#promotionsTable').style.display = 'none';
+    return;
+  }
+  document.querySelector('#promotionsTable').style.display = '';
+  empty.style.display = 'none';
+
+  body.innerHTML = list.map(pr => {
+    const scope = pr.collections?.name
+      ? `<span class="pill" style="background:#FEF3C7;color:#92400E">${esc(pr.collections.name)}</span>`
+      : `<span class="pill" style="background:#E0F2FE;color:#0369A1">All products</span>`;
+    return `<tr>
+      <td><strong>${esc(pr.name)}</strong><br><small style="color:var(--text-muted)">${esc(promotionSummary(pr))}</small></td>
+      <td>${esc(PROMO_TYPE_LABELS[pr.type] || pr.type)}</td>
+      <td>${scope}</td>
+      <td><span class="pill ${pr.is_active ? 'pill-active' : 'pill-inactive'}">${pr.is_active ? 'Active' : 'Paused'}</span></td>
+      <td>
+        <div class="row-actions">
+          <button class="row-btn" onclick="togglePromotionActive('${pr.id}', ${!pr.is_active})" title="${pr.is_active ? 'Pause' : 'Activate'}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
+          </button>
+          <button class="row-btn" onclick="openPromotionModal('${pr.id}')" title="Edit">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+          <button class="row-btn danger" onclick="deletePromotion('${pr.id}')" title="Delete">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+          </button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openPromotionModal(id = '') {
+  document.getElementById('promotionForm').reset();
+  document.getElementById('prEditId').value = id || '';
+  document.getElementById('promotionModalTitle').textContent = id ? 'Edit Promotion' : 'Add Promotion';
+  document.getElementById('promotionSubmitText').textContent = id ? 'Save Changes' : 'Save Promotion';
+
+  // Populate the collection dropdown each time the modal opens (collections may have changed)
+  const sel = document.getElementById('prCollection');
+  sel.innerHTML = '<option value="">— All products on the site —</option>' +
+    collections.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+
+  if (id) {
+    const pr = promotions.find(x => x.id === id);
+    if (pr) {
+      document.getElementById('prName').value    = pr.name || '';
+      document.getElementById('prType').value    = pr.type || 'percent_off';
+      document.getElementById('prPercent').value = pr.percent || '';
+      document.getElementById('prBuyQty').value  = pr.buy_qty || '';
+      document.getElementById('prGetQty').value  = pr.get_qty || '';
+      document.getElementById('prCollection').value = pr.collection_id || '';
+      document.getElementById('prActive').checked   = pr.is_active !== false;
+    }
+  } else {
+    document.getElementById('prType').value = 'percent_off';
+    document.getElementById('prActive').checked = true;
+  }
+
+  onPromotionTypeChange();
+  document.getElementById('promotionModalOverlay').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function closePromotionModal() {
+  document.getElementById('promotionModalOverlay').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+// Show/hide the parameter fields based on the chosen type
+function onPromotionTypeChange() {
+  const type = document.getElementById('prType').value;
+  const showPct  = (type === 'percent_off' || type === 'buy_x_get_y_percent_off');
+  const showBxgy = (type === 'buy_x_get_y_free' || type === 'buy_x_get_y_percent_off');
+  document.getElementById('prPercentGroup').style.display = showPct  ? '' : 'none';
+  document.getElementById('prBxgyGroup').style.display    = showBxgy ? 'grid' : 'none';
+}
+
+async function submitPromotion(e) {
+  e.preventDefault();
+  setLoading('promotion', true);
+
+  const type = document.getElementById('prType').value;
+  const percent = parseFloat(document.getElementById('prPercent').value);
+  const buyQty  = parseInt(document.getElementById('prBuyQty').value);
+  const getQty  = parseInt(document.getElementById('prGetQty').value);
+
+  // Validate per type
+  if (type === 'percent_off' && !(percent > 0 && percent <= 100)) {
+    setLoading('promotion', false); toast('Enter a percent between 1 and 100.'); return;
+  }
+  if (type === 'buy_x_get_y_free' && (!(buyQty >= 1) || !(getQty >= 1))) {
+    setLoading('promotion', false); toast('Buy and get quantities must be at least 1.'); return;
+  }
+  if (type === 'buy_x_get_y_percent_off' && (!(buyQty >= 1) || !(getQty >= 1) || !(percent > 0 && percent <= 100))) {
+    setLoading('promotion', false); toast('Fill X, Y, and the percent (1-100).'); return;
+  }
+
+  const payload = {
+    name:          document.getElementById('prName').value.trim(),
+    type,
+    collection_id: document.getElementById('prCollection').value || null,
+    percent:       (type === 'percent_off' || type === 'buy_x_get_y_percent_off') ? percent : null,
+    buy_qty:       (type === 'buy_x_get_y_free' || type === 'buy_x_get_y_percent_off') ? buyQty : null,
+    get_qty:       (type === 'buy_x_get_y_free' || type === 'buy_x_get_y_percent_off') ? getQty : null,
+    is_active:     document.getElementById('prActive').checked,
+  };
+
+  const editId = document.getElementById('prEditId').value;
+  const { error } = editId
+    ? await sb.from('promotions').update(payload).eq('id', editId)
+    : await sb.from('promotions').insert(payload);
+
+  setLoading('promotion', false);
+  if (error) { toast('Error: ' + error.message); return; }
+
+  toast(editId ? 'Promotion updated ✓' : 'Promotion added ✓');
+  closePromotionModal();
+  await fetchPromotions();
+}
+
+async function togglePromotionActive(id, makeActive) {
+  const { error } = await sb.from('promotions').update({ is_active: makeActive }).eq('id', id);
+  if (error) { toast('Error: ' + error.message); return; }
+  toast(makeActive ? 'Promotion activated ✓' : 'Promotion paused ✓');
+  await fetchPromotions();
+}
+
+async function deletePromotion(id) {
+  if (!confirm('Delete this promotion?')) return;
+  const { error } = await sb.from('promotions').delete().eq('id', id);
+  if (error) { toast('Delete failed: ' + error.message); return; }
+  toast('Promotion deleted ✓');
+  await fetchPromotions();
+}
+
 /* ── ORDERS TABLE ──────────────────────────────────────────── */
 function renderOrderTable(list = orders) {
   const body  = document.getElementById('ordersBody');
@@ -1550,7 +1725,7 @@ function navigateTo(page) {
   document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.page === page));
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === `page-${page}`));
 
-  const titles = { dashboard: 'Dashboard', hero: 'Hero Banner', offers: 'Offers', products: 'Products', collections: 'Collections', bundles: 'Bundles', orders: 'Orders', customers: 'Customers' };
+  const titles = { dashboard: 'Dashboard', hero: 'Hero Banner', offers: 'Offers', products: 'Products', collections: 'Collections', bundles: 'Bundles', promotions: 'Promotions', orders: 'Orders', customers: 'Customers' };
   document.getElementById('pageTitle').textContent = titles[page] || page;
 }
 
